@@ -1,0 +1,8 @@
+# External dependencies
+node_modules/
+
+# Temporary snippet store
+unused/
+
+# IDE
+.vscode/
