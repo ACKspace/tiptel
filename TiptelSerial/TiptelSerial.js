@@ -1,5 +1,5 @@
 import { Transform } from "stream"
-import { sleep, P } from "../helpers/helpers.js";
+import { P } from "../helpers/helpers.js";
 import { Command, State } from "./types.js";
 import { Parser } from "./TitelCommandParser.js";
 
@@ -242,11 +242,14 @@ export class TiptelParser extends Transform {
     // Wait for state
     this.#state = waitForState;
 
-    return await new Promise((resolve) => {
+    // TODO: This causes a memory leak!?
+    const result = await new Promise((resolve) => {
       this.once("command", (data) => {
         resolve(data);
       })
     });
+
+    return result;
   }
 
   checksum(data)

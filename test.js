@@ -2,6 +2,7 @@ import { SerialPort } from "serialport";
 import { TiptelParser } from "./TiptelSerial/TiptelSerial.js";
 import { Command, State } from "./TiptelSerial/types.js";
 import { s as string, n as number, b as bitmask, h as hexadecimal, d as digits } from "./TiptelSerial/TitelCommandParser.js";
+import { parseInput, writeCommandList } from "./helpers/helpers.js";
 
 const {stdin, stdout } = process;
 
@@ -37,6 +38,12 @@ console.assert(!tiptel.checksum(buffer), "Unexpected send checksum");
 console.assert(buffer[buffer.length - 1] === 0x66, "Send checksum write failed");
 stdout.write("done\n");
 
+// Input
+stdout.write("input parser:\t");
+console.assert(JSON.stringify(parseInput("01\t42 00011000 A  ff")) === JSON.stringify([0x01, 0x42, 0x18, 0x0A, 0xFF]), "Input parser failed");
+console.assert(JSON.stringify(parseInput("G 42")) === JSON.stringify(false), "Unexpected output");
+console.assert(JSON.stringify(parseInput("42 Q")) === JSON.stringify(false), "Unexpected output");
+stdout.write("done\n");
 
 stdout.write("invokePabx:\t");
 // Verify data is array
@@ -71,6 +78,8 @@ delete tiptel.invokePabx;
 stdout.write("done\n\n");
 
 
+void writeCommandList();
+
 tiptel.on("dtr", (dtr) => {
   // console.log(`DTR ${dtr ? "enabled (low)" : "disabled (high)"}`);
   serialport.set({ dtr });
@@ -93,14 +102,44 @@ stdin.resume();
 // No binary, plain text
 stdin.setEncoding( "utf8" );
 
+let hexMode = false;
 // on any data into stdin
-stdin.on( "data", function( key )
+stdin.on( "data", function( key, a2, a3 )
 {
+  if (key === "\u0003")
+    process.exit();
+
+  if (hexMode !== false)
+  {
+    switch (key.charCodeAt(0))
+    {
+      case 27: // Misc
+        break;
+      case 127: // backspace
+        hexMode = hexMode.substr(0,hexMode.length - 1);
+        break;
+      case 10:
+      case 13:
+        const data = parseInput(hexMode);
+        if (data)
+        {
+          void tiptel.readPabx(...data);
+        } else {
+          console.log("input failed");
+        }
+        hexMode = false;
+        break;
+      default:
+        stdout.write(key);
+        hexMode += key;
+      }
+
+    return;
+  }
+
+
   switch (key)
   {
-    case "\u0003":
-      process.exit();
-
     case "l":
     case "L":
       console.log("log enabled");
@@ -133,7 +172,31 @@ stdin.on( "data", function( key )
       void tiptel.readPabx(Command.PIN, 0x01);
       break;
     
-    default:
+    case "m":
+    case "M":
+      console.log("MSN allocation");
+      void tiptel.readPabx(Command.MSN_ALLOCATION, 0x01);
+      break;
+
+    case "s":
+    case "S":
+      console.log("MSN assignment");
+      void tiptel.readPabx(Command.MSN_ASSIGNMENT, 0x0C);
+      // 0x0B is beginning of blocked numbers..
+      break;
+          
+      case "h":
+      case "H":
+        console.log("Hex (raw) mode enabled");
+        hexMode = "";
+        break;
+
+      case "q":
+      case "Q":
+        // void tiptel.readPabx(0x90); // 15 91 90 93 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 92
+        break;
+    
+      default:
       // write the key to stdout all normal like
       stdout.write( key );
   }
